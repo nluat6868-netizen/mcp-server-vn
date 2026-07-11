@@ -1,0 +1,4 @@
+fastmcp>=2.13.0.2
+ddgs>=9.0.0
+starlette>=1.0.1
+uvicorn>=0.35
