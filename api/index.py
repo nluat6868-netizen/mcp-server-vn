@@ -1,77 +1,9 @@
 # api/index.py
-import sys
-import re
 import json
-import urllib.request
-import urllib.parse
-
-# Add parent dir for imports
-sys.path.insert(0, ".")
-
-from fastmcp import FastMCP
-
-mcp = FastMCP("Search")
 
 
-def _fetch_url(url: str) -> str:
-    req = urllib.request.Request(url, headers={
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    })
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        return resp.read().decode("utf-8", errors="replace")
-
-
-def _extract_text(html: str, max_len: int = 3000) -> str:
-    text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL)
-    text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL)
-    text = re.sub(r'<[^>]+>', ' ', text)
-    text = re.sub(r'&[a-zA-Z]+;', ' ', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text[:max_len]
-
-
-def _search_and_fetch(query: str, max_results: int = 5) -> list:
-    from ddgs import DDGS
-    search_results = DDGS().text(query, max_results=max_results)
-    results = []
-    for r in search_results[:max_results]:
-        url = r.get("href", "")
-        title = r.get("title", "")
-        snippet = r.get("body", "")
-        content = snippet
-        if url:
-            try:
-                html = _fetch_url(url)
-                extracted = _extract_text(html, 3000)
-                if len(extracted) > len(snippet):
-                    content = extracted
-            except Exception:
-                pass
-        results.append({"title": title, "url": url, "content": content})
-    results.sort(key=lambda x: len(x.get("content", "")), reverse=True)
-    return results
-
-
-@mcp.tool()
-def web_search(query: str, max_results: int = 3) -> dict:
-    """Search the web and return actual content from results."""
-    try:
-        results = _search_and_fetch(query, max_results)
-        return {"success": True, "query": query, "results": results}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-@mcp.tool()
-def fetch_webpage(url: str) -> dict:
-    """Fetch and return the text content of a webpage."""
-    try:
-        html = _fetch_url(url)
-        content = _extract_text(html, 3000)
-        return {"success": True, "url": url, "content": content}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-# Vercel ASGI handler
-app = mcp.http_app(transport="sse")
+def handler(request, response):
+    response.status_code = 200
+    response.headers["Content-Type"] = "application/json"
+    response.body = json.dumps({"status": "ok", "message": "MCP Server is running"})
+    return response
