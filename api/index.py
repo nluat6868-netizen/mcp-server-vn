@@ -2,13 +2,9 @@
 import json
 import re
 import urllib.request
-import urllib.parse
+from flask import Flask, request, jsonify
 
-try:
-    from flask import Flask, request, jsonify
-    app = Flask(__name__)
-except ImportError:
-    app = None
+app = Flask(__name__)
 
 
 def _search(query):
@@ -35,46 +31,47 @@ def _search(query):
     return data
 
 
-if app:
-    @app.route("/")
-    def index():
-        return jsonify({
-            "status": "ok",
-            "name": "MCP Search Server",
-            "endpoints": {
-                "search": "/api/search?query=...",
-                "fetch": "/api/fetch?url=..."
-            }
-        })
-
-    @app.route("/api/search")
-    def search():
-        q = request.args.get("query", "")
-        if not q:
-            return jsonify({"error": "Missing query"}), 400
-        try:
-            results = _search(q)
-            return jsonify({"success": True, "query": q, "results": results})
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-
-    @app.route("/api/fetch")
-    def fetch_page():
-        url = request.args.get("url", "")
-        if not url:
-            return jsonify({"error": "Missing url"}), 400
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                html = resp.read().decode("utf-8", errors="replace")
-            text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL)
-            text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL)
-            text = re.sub(r'<[^>]+>', ' ', text)
-            text = re.sub(r'\s+', ' ', text).strip()[:3000]
-            return jsonify({"success": True, "url": url, "content": text})
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
+@app.route("/")
+def index():
+    return jsonify({
+        "status": "ok",
+        "name": "MCP Search Server",
+        "endpoints": {
+            "search": "/api/search?query=...",
+            "fetch": "/api/fetch?url=..."
+        }
+    })
 
 
-# Entry point for Vercel
+@app.route("/api/search")
+def search():
+    q = request.args.get("query", "")
+    if not q:
+        return jsonify({"error": "Missing query"}), 400
+    try:
+        results = _search(q)
+        return jsonify({"success": True, "query": q, "results": results})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/fetch")
+def fetch_page():
+    url = request.args.get("url", "")
+    if not url:
+        return jsonify({"error": "Missing url"}), 400
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            html = resp.read().decode("utf-8", errors="replace")
+        text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL)
+        text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL)
+        text = re.sub(r'<[^>]+>', ' ', text)
+        text = re.sub(r'\s+', ' ', text).strip()[:3000]
+        return jsonify({"success": True, "url": url, "content": text})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# Vercel entry point
 application = app
