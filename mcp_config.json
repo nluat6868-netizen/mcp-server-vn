@@ -3,7 +3,7 @@
   "mcpServers": {
     "local-stdio-search": {
       "type": "stdio",
-      "command": "C:\\Users\\nluat\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
+      "command": "python",
       "args": ["search.py"]
     }
   }
