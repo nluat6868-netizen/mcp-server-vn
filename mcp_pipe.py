@@ -204,8 +204,33 @@ def build_server_command(target=None):
     return [sys.executable, script_path], os.environ.copy()
 
 
+def start_health_server():
+    """Start simple HTTP server to keep Render instance alive."""
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    import threading
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status":"ok"}')
+
+        def log_message(self, format, *args):
+            pass
+
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    logger.info(f"Health server running on port {port}")
+
+
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
+
+    # Start health server for Render
+    start_health_server()
 
     endpoint_url = os.environ.get('MCP_ENDPOINT')
     if not endpoint_url:
