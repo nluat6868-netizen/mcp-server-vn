@@ -206,24 +206,10 @@ def build_server_command(target=None):
 
 def start_health_server():
     """Start simple HTTP server to keep Render instance alive."""
-    from http.server import HTTPServer, BaseHTTPRequestHandler
-    import threading
-
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(b'{"status":"ok"}')
-
-        def log_message(self, format, *args):
-            pass
-
-    port = int(os.environ.get("PORT", 8080))
-    server = HTTPServer(("0.0.0.0", port), Handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    logger.info(f"Health server running on port {port}")
+    import subprocess
+    subprocess.Popen([sys.executable, "-m", "http.server", str(os.environ.get("PORT", "8080")), "--bind", "0.0.0.0"],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    logger.info(f"Health server starting on port {os.environ.get('PORT', '8080')}")
 
 
 if __name__ == "__main__":
