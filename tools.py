@@ -161,6 +161,7 @@ def play_music(query: str) -> dict:
             "success": True,
             "title": top['title'],
             "url": top['url'],
+            "audio_url": stream_url,
             "stream_url": stream_url,
             "duration": top['duration'],
             "channel": top['channel'],
