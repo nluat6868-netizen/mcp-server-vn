@@ -1,10 +1,10 @@
 {
   "mcpEndpoint": "wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjk5OTk1NywiYWdlbnRJZCI6MjExNjM4MywiZW5kcG9pbnRJZCI6ImFnZW50XzIxMTYzODMiLCJwdXJwb3NlIjoibWNwLWVuZHBvaW50IiwiaWF0IjoxNzgzNzY3OTM0LCJleHAiOjE4MTUzMjU1MzR9.Ji7qXKcrLhbbzudwOhb6_cgNlvj5YABkztqeIvcVrFeREzUiT5i1LNbGhLyzqxv45XNvJ-PrZ2ziuNBL2DrrkA",
   "mcpServers": {
-    "local-stdio-search": {
+    "local-stdio-tools": {
       "type": "stdio",
       "command": "python",
-      "args": ["search.py"]
+      "args": ["tools.py"]
     }
   }
 }
