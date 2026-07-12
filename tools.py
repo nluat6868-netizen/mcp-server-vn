@@ -4,6 +4,7 @@ import sys
 import logging
 import re
 import traceback
+import json
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -86,11 +87,47 @@ def fetch_webpage(url: str) -> dict:
         return {"success": False, "error": str(e)}
 
 
-# ==================== YOUTUBE MUSIC ====================
+# ==================== MUSIC ====================
 
-def _search_youtube(query: str, max_results: int = 5) -> list:
+def _search_music_api(query: str) -> dict:
+    """Search music using vkeys.cn API (works on ESP32 xiaozhi)."""
+    import urllib.request
+    import urllib.parse
+
+    logger.info(f"_search_music_api: query={query}")
+    encoded = urllib.parse.quote(query)
+    sources = ['tencent', 'netease']
+
+    for source in sources:
+        url = f'https://api.vkeys.cn/v2/music/{source}?word={encoded}&choose=1&quality=2'
+        try:
+            req = urllib.request.Request(url, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            })
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read())
+                if data.get('code') == 200 and data.get('data'):
+                    d = data['data']
+                    music_url = d.get('url', '')
+                    if music_url:
+                        logger.info(f"_search_music_api: found '{d.get('song')}' from {source}")
+                        return {
+                            'title': d.get('song', ''),
+                            'artist': d.get('singer', ''),
+                            'url': music_url,
+                            'source': source,
+                        }
+        except Exception as e:
+            logger.warning(f"_search_music_api: {source} failed: {e}")
+
+    logger.info(f"_search_music_api: no results for '{query}'")
+    return {}
+
+
+def _search_youtube_fallback(query: str) -> dict:
+    """Fallback: search YouTube (may not work on ESP32)."""
     from yt_dlp import YoutubeDL
-    logger.info(f"_search_youtube: query={query}, max={max_results}")
+    logger.info(f"_search_youtube_fallback: query={query}")
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
@@ -98,107 +135,71 @@ def _search_youtube(query: str, max_results: int = 5) -> list:
         'default_search': 'ytsearch',
         'noplaylist': True,
     }
-    search_query = f"ytsearch{max_results}:{query}"
-    results = []
     try:
         with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(search_query, download=False)
-            if not info or 'entries' not in info:
-                logger.warning(f"_search_youtube: no entries found for '{query}'")
-                return results
-            for entry in info['entries']:
-                if entry is None:
-                    continue
-                results.append({
-                    'id': entry.get('id', ''),
-                    'title': entry.get('title', ''),
-                    'url': f"https://www.youtube.com/watch?v={entry.get('id', '')}",
-                    'duration': entry.get('duration', 0),
-                    'channel': entry.get('channel', '') or entry.get('uploader', ''),
-                })
-        logger.info(f"_search_youtube: found {len(results)} results")
+            info = ydl.extract_info(f"ytsearch1:{query}", download=False)
+            if info and 'entries' in info and info['entries']:
+                entry = info['entries'][0]
+                if entry:
+                    # Get stream URL
+                    ydl_opts2 = {
+                        'quiet': True,
+                        'no_warnings': True,
+                        'format': 'bestaudio[ext=m4a]/bestaudio/best',
+                        'noplaylist': True,
+                    }
+                    with YoutubeDL(ydl_opts2) as ydl2:
+                        info2 = ydl2.extract_info(f"https://www.youtube.com/watch?v={entry['id']}", download=False)
+                        stream_url = info2.get('url', '') if info2 else ''
+                        if stream_url:
+                            logger.info(f"_search_youtube_fallback: found '{entry.get('title')}'")
+                            return {
+                                'title': entry.get('title', ''),
+                                'artist': entry.get('channel', '') or entry.get('uploader', ''),
+                                'url': stream_url,
+                                'source': 'youtube',
+                            }
     except Exception as e:
-        logger.error(f"_search_youtube error: {e}")
-        logger.error(traceback.format_exc())
-        raise
-    return results
-
-
-def _get_stream_url(video_id: str) -> str:
-    from yt_dlp import YoutubeDL
-    logger.info(f"_get_stream_url: video_id={video_id}")
-    ydl_opts = {
-        'quiet': True,
-        'no_warnings': True,
-        'format': 'bestaudio[ext=m4a]/bestaudio/best',
-        'noplaylist': True,
-    }
-    url = f"https://www.youtube.com/watch?v={video_id}"
-    try:
-        with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            if info:
-                stream_url = info.get('url', '') or info.get('webpage_url', '')
-                logger.info(f"_get_stream_url: got URL length={len(stream_url)}")
-                return stream_url
-        logger.warning(f"_get_stream_url: no info returned for {video_id}")
-    except Exception as e:
-        logger.error(f"_get_stream_url error: {e}")
-        logger.error(traceback.format_exc())
-        raise
-    return ''
+        logger.error(f"_search_youtube_fallback error: {e}")
+    return {}
 
 
 @mcp.tool()
 def search_music(query: str, max_results: int = 5) -> dict:
-    """Search YouTube for music and return video info."""
+    """Search music and return song info with playable URL."""
     try:
-        results = _search_youtube(query, max_results)
-        return {"success": True, "query": query, "count": len(results), "results": results}
+        result = _search_music_api(query)
+        if not result:
+            result = _search_youtube_fallback(query)
+        if result:
+            return {"success": True, "query": query, "count": 1, "results": [result]}
+        return {"success": False, "error": "No results found"}
     except Exception as e:
         logger.error(f"search_music error: {e}")
         return {"success": False, "error": str(e)}
 
 
 @mcp.tool()
-def get_music_url(video_id: str) -> dict:
-    """Get playable stream URL for a YouTube video."""
-    try:
-        stream_url = _get_stream_url(video_id)
-        if stream_url:
-            return {"success": True, "video_id": video_id, "stream_url": stream_url}
-        return {"success": False, "error": "Could not get stream URL"}
-    except Exception as e:
-        logger.error(f"get_music_url error: {e}")
-        return {"success": False, "error": str(e)}
-
-
-@mcp.tool()
 def play_music(query: str) -> dict:
-    """Search and get playable URL for a song in one step."""
+    """Search and get playable URL for a song. Returns direct HTTP URL compatible with ESP32."""
     logger.info(f"play_music called: query={query}")
     try:
-        results = _search_youtube(query, max_results=1)
-        if not results:
+        result = _search_music_api(query)
+        if not result:
+            result = _search_youtube_fallback(query)
+        if not result:
             logger.warning("play_music: no results found")
             return {"success": False, "error": "No results found"}
-        top = results[0]
-        logger.info(f"play_music: top result = {top['title']} (id={top['id']})")
-        stream_url = _get_stream_url(top['id'])
-        logger.info(f"play_music: stream_url length = {len(stream_url) if stream_url else 0}")
-        if not stream_url:
-            logger.error("play_music: stream_url is empty!")
-            return {"success": False, "error": "Could not get stream URL"}
         resp = {
             "success": True,
-            "title": top['title'],
-            "url": top['url'],
-            "audio_url": stream_url,
-            "stream_url": stream_url,
-            "duration": top['duration'],
-            "channel": top['channel'],
+            "title": result['title'],
+            "artist": result['artist'],
+            "url": result['url'],
+            "audio_url": result['url'],
+            "stream_url": result['url'],
+            "source": result['source'],
         }
-        logger.info(f"play_music: returning success for '{top['title']}'")
+        logger.info(f"play_music: returning '{result['title']}' - {result['artist']} (source={result['source']})")
         return resp
     except Exception as e:
         logger.error(f"play_music error: {e}")
