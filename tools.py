@@ -3,12 +3,20 @@ from fastmcp import FastMCP
 import sys
 import logging
 import re
+import traceback
 
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s [%(name)s] %(levelname)s: %(message)s',
+    stream=sys.stderr,
+)
 logger = logging.getLogger('Tools')
 
 if sys.platform == 'win32':
     sys.stderr.reconfigure(encoding='utf-8')
     sys.stdout.reconfigure(encoding='utf-8')
+
+logger.info("tools.py starting up...")
 
 mcp = FastMCP("Tools")
 
@@ -82,6 +90,7 @@ def fetch_webpage(url: str) -> dict:
 
 def _search_youtube(query: str, max_results: int = 5) -> list:
     from yt_dlp import YoutubeDL
+    logger.info(f"_search_youtube: query={query}, max={max_results}")
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
@@ -91,25 +100,33 @@ def _search_youtube(query: str, max_results: int = 5) -> list:
     }
     search_query = f"ytsearch{max_results}:{query}"
     results = []
-    with YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(search_query, download=False)
-        if not info or 'entries' not in info:
-            return results
-        for entry in info['entries']:
-            if entry is None:
-                continue
-            results.append({
-                'id': entry.get('id', ''),
-                'title': entry.get('title', ''),
-                'url': f"https://www.youtube.com/watch?v={entry.get('id', '')}",
-                'duration': entry.get('duration', 0),
-                'channel': entry.get('channel', '') or entry.get('uploader', ''),
-            })
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(search_query, download=False)
+            if not info or 'entries' not in info:
+                logger.warning(f"_search_youtube: no entries found for '{query}'")
+                return results
+            for entry in info['entries']:
+                if entry is None:
+                    continue
+                results.append({
+                    'id': entry.get('id', ''),
+                    'title': entry.get('title', ''),
+                    'url': f"https://www.youtube.com/watch?v={entry.get('id', '')}",
+                    'duration': entry.get('duration', 0),
+                    'channel': entry.get('channel', '') or entry.get('uploader', ''),
+                })
+        logger.info(f"_search_youtube: found {len(results)} results")
+    except Exception as e:
+        logger.error(f"_search_youtube error: {e}")
+        logger.error(traceback.format_exc())
+        raise
     return results
 
 
 def _get_stream_url(video_id: str) -> str:
     from yt_dlp import YoutubeDL
+    logger.info(f"_get_stream_url: video_id={video_id}")
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
@@ -117,10 +134,18 @@ def _get_stream_url(video_id: str) -> str:
         'noplaylist': True,
     }
     url = f"https://www.youtube.com/watch?v={video_id}"
-    with YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
-        if info:
-            return info.get('url', '') or info.get('webpage_url', '')
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if info:
+                stream_url = info.get('url', '') or info.get('webpage_url', '')
+                logger.info(f"_get_stream_url: got URL length={len(stream_url)}")
+                return stream_url
+        logger.warning(f"_get_stream_url: no info returned for {video_id}")
+    except Exception as e:
+        logger.error(f"_get_stream_url error: {e}")
+        logger.error(traceback.format_exc())
+        raise
     return ''
 
 
@@ -151,13 +176,20 @@ def get_music_url(video_id: str) -> dict:
 @mcp.tool()
 def play_music(query: str) -> dict:
     """Search and get playable URL for a song in one step."""
+    logger.info(f"play_music called: query={query}")
     try:
         results = _search_youtube(query, max_results=1)
         if not results:
+            logger.warning("play_music: no results found")
             return {"success": False, "error": "No results found"}
         top = results[0]
+        logger.info(f"play_music: top result = {top['title']} (id={top['id']})")
         stream_url = _get_stream_url(top['id'])
-        return {
+        logger.info(f"play_music: stream_url length = {len(stream_url) if stream_url else 0}")
+        if not stream_url:
+            logger.error("play_music: stream_url is empty!")
+            return {"success": False, "error": "Could not get stream URL"}
+        resp = {
             "success": True,
             "title": top['title'],
             "url": top['url'],
@@ -166,8 +198,11 @@ def play_music(query: str) -> dict:
             "duration": top['duration'],
             "channel": top['channel'],
         }
+        logger.info(f"play_music: returning success for '{top['title']}'")
+        return resp
     except Exception as e:
         logger.error(f"play_music error: {e}")
+        logger.error(traceback.format_exc())
         return {"success": False, "error": str(e)}
 
 
